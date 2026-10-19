@@ -1,0 +1,22 @@
+<mujoco model="base_scene">
+  <option timestep="0.001"/>
+
+  <worldbody>
+    <light pos="0 0 2"/>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+
+    <!-- table: no joint, so it is fixed -->
+    <body name="table" pos="0 0 0.2">
+      <geom name="table_top" type="box" size="0.4 0.3 0.2"/>
+    </body>
+
+    <!-- test object: the 50 mm cube from the Day 1 trials -->
+    <body name="cube" pos="0 0 0.45">
+      <freejoint/>
+      <geom name="cube_geom" type="box" size="0.025 0.025 0.025" mass="0.1"/>
+    </body>
+
+    <site name="target" pos="0.3 0 0.4" size="0.01" rgba="0 1 0 1">
+    </site>
+  </worldbody>
+</mujoco>

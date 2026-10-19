@@ -1,0 +1,6 @@
+[submodule "assets/grippers/ros2_epick_gripper"]
+	path = assets/grippers/ros2_epick_gripper
+	url = https://github.com/PickNikRobotics/ros2_epick_gripper
+[submodule "assets/grippers/ros2_robotiq_gripper"]
+	path = assets/grippers/ros2_robotiq_gripper
+	url = https://github.com/PickNikRobotics/ros2_robotiq_gripper

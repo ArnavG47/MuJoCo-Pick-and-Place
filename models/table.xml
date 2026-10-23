@@ -16,7 +16,7 @@
       <geom name="cube_geom" type="box" size="0.025 0.025 0.025" mass="0.1"/>
     </body>
 
-    <body mocap="true" name="carrier" pos="0 0.2 0.45">
+    <body mocap="true" name="carrier" pos="0 0 0.7">
       <geom name="visual_cube_geom" type="box" size="0.03 0.03 0.06" 
       rgba="1 0 0 1" contype="0" conaffinity="0"/>
       <site name="flange" pos="0 0 0"/>

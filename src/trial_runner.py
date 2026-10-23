@@ -1,3 +1,7 @@
+import time
+
+import mujoco
+import mujoco.viewer
 import numpy as np
 
 START = np.array([0.0, 0.0, 0.7])
@@ -23,6 +27,8 @@ PHASES = [
     ("RETRACT",          0.5,  RETRACTED),
 ]
 
+def step_to_time(step, dt): return step * dt
+
 def build_schedule(phases, start):
     """Turn durations into absolute times: list of (name, t0, t1, p0, p1)."""
     schedule = []
@@ -39,10 +45,6 @@ def build_schedule(phases, start):
 
 SCHEDULE = build_schedule(PHASES, START)
 
-#testing schedule
-for row in SCHEDULE:
-    print(row[0], row[1], row[2])
-
 def phase_at(t):
     """Return (phase_name, carrier_position) at time t."""
     for name, t0, t1, p0, p1 in SCHEDULE:
@@ -53,6 +55,47 @@ def phase_at(t):
     return ('DONE', SCHEDULE[-1][4])
 
 
-for t in [0.0, 0.75, 1.5, 2.1, 7.0, 8.0]:
-    print(t, phase_at(t))
+if __name__ == "__main__":
+    #testing schedule
+    for row in SCHEDULE:
+        print(row[0], row[1], row[2])
+
+    for t in [0.0, 0.75, 1.5, 2.1, 7.0, 8.0]:
+        print(t, phase_at(t))
+
+    model = mujoco.MjModel.from_xml_path("models/table.xml")
+    data = mujoco.MjData(model)
+
+    mid = model.body("carrier").mocapid[0]
+    T_END = SCHEDULE[-1][2] + 1.0   # end of RETRACT + 1 s
+    n_steps = int(round(T_END/model.opt.timestep))
+
+    prev_name = None
+    with mujoco.viewer.launch_passive(model, data) as viewer:
+        for step in range(0, n_steps):
+            if not viewer.is_running():
+                break
+            step_start = time.time()
+
+            name, pos = phase_at(step_to_time(step, model.opt.timestep))
+            data.mocap_pos[mid] = pos
+            if name != prev_name:
+                print(f"{step_to_time(step, model.opt.timestep):.5f}s  enter {name}")
+                # later: if name == "ENGAGE": close gripper / turn on suction
+                prev_name = name
+
+            #simulation step is incremented here
+            mujoco.mj_step(model, data)
+
+            viewer.sync()
+            elapsed = time.time() - step_start
+            remaining = model.opt.timestep - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+
+        print("cube position:", data.body("cube").xpos)
+
+        while viewer.is_running():
+            viewer.sync()
+            time.sleep(0.01)
 

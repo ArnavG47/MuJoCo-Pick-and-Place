@@ -1,13 +1,15 @@
 import mujoco
+import time
+import mujoco.viewer
 import numpy as np
 
 WAYPOINTS = [
-    (0.0, np.array([0.0, 0.0, 0.7])),     # start
-    (0.5, np.array([0, 0, 0.525])), # TODO: pregrasp   - you pick the time
-    (1.5, np.array([0, 0, 0.425])), # TODO: grasp    ()  - 100 mm at 100 mm/s, so +1.0 s after pregrasp
-    (1.75, np.array([0, 0, 0.425])), # TODO: hold     same position   - +0.25 s
-    (2.75, np.array([0, 0, 0.575])),# TODO: lifted   (0, 0, 0.575)  - you pick the duration
-    (3.75, np.array([0.3, 0, 0.575])) # TODO: above target (0.3, 0, 0.575)
+    (0, np.array([0.0, 0.0, 0.7])),     # start
+    (2, np.array([0, 0, 0.525])), # TODO: pregrasp   - you pick the time
+    (3, np.array([0, 0, 0.425])), # TODO: grasp    ()  - 100 mm at 100 mm/s, so +1.0 s after pregrasp
+    (3.25, np.array([0, 0, 0.425])), # TODO: hold     same position   - +0.25 s
+    (4.25, np.array([0, 0, 0.575])),# TODO: lifted   (0, 0, 0.575)  - you pick the duration
+    (6, np.array([0.3, 0, 0.575])) # TODO: above target (0.3, 0, 0.575)
 ]
 
 def carrier_target(t):
@@ -29,9 +31,26 @@ data = mujoco.MjData(model)
 mid = model.body("carrier").mocapid[0]
 T_END = WAYPOINTS[-1][0] +  1.0
 n_steps = int(round(T_END/model.opt.timestep))
+print_interval = 0.5
+print_interval_steps = int(round(print_interval/model.opt.timestep))
 
-for step in range(1,n_steps):
-    data.mocap_pos[mid] = carrier_target(data.time) #data.time is the current simulation time
-    mujoco.mj_step(model, data) #increments simulation time for the loop
-    if(step%(0.5/model.opt.timestep) == 0):
-        print("time is ", round(data.time, 3), "; position is ", data.site("flange").xpos)
+with mujoco.viewer.launch_passive(model, data) as viewer:
+    for step in range(1, n_steps+1):
+        if not viewer.is_running():
+            break
+        step_start = time.time()
+
+        data.mocap_pos[mid] = carrier_target(data.time) #data.time is the current simulation time
+        mujoco.mj_step(model, data) #increments simulation time for the loop
+        if(step%print_interval_steps == 0):
+            print("time is ", round(data.time, 3), "; position is ", data.site("flange").xpos)
+
+        viewer.sync()
+        elapsed = time.time() - step_start
+        remaining = model.opt.timestep - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+
+    print("cube position:", data.body("cube").xpos)
+
+    while viewer.is_running(): viewer.sync()

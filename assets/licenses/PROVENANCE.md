@@ -17,6 +17,7 @@ Edits are made in working copies under `assets/grippers/work/`.
   3. `urdf/robotiq_2f_85_macro.urdf.xacro` line 24: `$(find robotiq_description)` replaced with the absolute working-copy path.
 - Generated files:
   - `robotiq_2f85.urdf`: produced by `xacro urdf/robotiq_2f_85_gripper.urdf.xacro` (default args: `use_fake_hardware=true`, `com_port=/dev/ttyUSB0`; both unused with ros2_control disabled). Verified: no `xacro:`, `$(`, or `ros2_control` left.
+  - `robotiq_2f85.urdf` hand edit: 18 `package://robotiq_description` mesh paths replaced with the absolute working-copy path. Redo this if xacro is rerun.
 
 ## EPick (dual-suction baseline)
 - Source: https://github.com/PickNikRobotics/ros2_epick_gripper

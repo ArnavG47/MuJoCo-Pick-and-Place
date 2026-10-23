@@ -20,7 +20,7 @@ jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 Mako==1.4.3
 MarkupSafe==3.0.4
-mujoco==3.11.0
+mujoco==3.16.0
 narwhals==2.27.1
 numpy==2.5.1
 optuna==5.0.0
@@ -30,6 +30,7 @@ pillow==12.3.0
 plotly==7.1.0
 protobuf==7.36.2
 pyarrow==26.0.0
+pybind11-stubgen==3.0.0
 pydeck==0.9.3
 PyOpenGL==3.1.10
 python-dateutil==2.9.0.post0
@@ -50,4 +51,5 @@ urllib3==2.8.0
 uvicorn==0.54.0
 watchdog==6.0.0
 websockets==17.2
+xacro==2.1.1
 zipp==4.1.0

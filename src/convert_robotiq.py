@@ -26,7 +26,21 @@ for j in spec.joints:
     j.damping = DAMPING
     j.armature = ARMATURE
 
-model = spec.compile()
+#add finger actuator to driving joint
+DRIVER_JOINT = "robotiq_85_left_knuckle_joint"
+KP= 10
+FORCE_LIMIT = 5
+
+actuator = spec.add_actuator(
+    name="driving_actuator",
+    target= DRIVER_JOINT,
+    trntype=mujoco.mjtTrn.mjTRN_JOINT,
+    ctrlrange=[0, 0.8],
+    forcerange=[-FORCE_LIMIT, FORCE_LIMIT]
+)
+actuator.set_to_position(kp=KP)
+
+model: mujoco.MjModel = spec.compile()
 
 # TODO 2: print the counts: model.nbody, model.njnt, model.neq, model.ngeom, model.nmesh
 bodies = model.nbody
@@ -34,6 +48,8 @@ print("bodies: ", bodies, "\n joints: ", model.njnt, "\n eq: ", model.neq, "\n n
       model.ngeom, "\n meshes: ", model.nmesh)
 # TODO 3: loop over joints; print each name and range
 #   hint: model.joint(i).name, model.jnt_range[i]
+joint_id = model.actuator("driving_actuator").trnid[0]
+print("\n actuators:", model.nu, "\ndriving joint name:", model.joint(joint_id).name)
 
 # TODO 4: loop over bodies; print each name and mass
 #   hint: model.body(i).name, model.body_mass[i]
@@ -41,7 +57,7 @@ total_mass = 0
 for i in range(0,bodies):
     total_mass += model.body_mass[i]
 
-print("total mass is: ", total_mass)
+print("\ntotal mass is: ", total_mass)
 # TODO 5: if model.neq > 0, print what each equality constraint links
 #   hint: model.eq_obj1id[i], model.eq_obj2id[i] are joint ids -> model.joint(id).name
 

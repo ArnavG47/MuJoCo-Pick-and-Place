@@ -65,4 +65,8 @@
     <joint joint1="robotiq_85_left_finger_tip_joint" joint2="robotiq_85_left_knuckle_joint" polycoef="0 -1 0 0 0"/>
     <joint joint1="robotiq_85_right_finger_tip_joint" joint2="robotiq_85_left_knuckle_joint"/>
   </equality>
+
+  <actuator>
+    <general name="driving_actuator" joint="robotiq_85_left_knuckle_joint" ctrlrange="0 0.8" forcerange="-5 5" input="pos" biastype="affine" gainprm="10" biasprm="0 -10"/>
+  </actuator>
 </mujoco>

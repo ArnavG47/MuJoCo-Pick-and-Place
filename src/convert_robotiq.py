@@ -9,6 +9,23 @@ spec = mujoco.MjSpec.from_file(str(URDF))
 # TODO 1: turn off fusestatic (hint: spec.compiler has an attribute for it)
 
 spec.compiler.fusestatic = False
+
+# Self-collision off: geoms collide if (A.contype & B.conaffinity) or (B.contype & A.conaffinity).
+# Gripper: contype=2, conaffinity=1. World objects use the default 1/1.
+#   gripper vs gripper: (2 & 1) or (2 & 1) = 0  -> no contact
+#   gripper vs cube:    (2 & 1) or (1 & 1) = 1  -> contact
+GRIPPER_CONTYPE = 2
+GRIPPER_CONAFFINITY = 1
+for g in spec.geoms:
+    g.contype = GRIPPER_CONTYPE
+    g.conaffinity = GRIPPER_CONAFFINITY
+
+DAMPING = [0.05, 0, 0]
+ARMATURE = 0.001
+for j in spec.joints:
+    j.damping = DAMPING
+    j.armature = ARMATURE
+
 model = spec.compile()
 
 # TODO 2: print the counts: model.nbody, model.njnt, model.neq, model.ngeom, model.nmesh

@@ -28,8 +28,8 @@ for j in spec.joints:
 
 #add finger actuator to driving joint
 DRIVER_JOINT = "robotiq_85_left_knuckle_joint"
-KP= 10
-FORCE_LIMIT = 5
+KP= 5
+FORCE_LIMIT = 15
 
 actuator = spec.add_actuator(
     name="driving_actuator",
@@ -46,8 +46,12 @@ model: mujoco.MjModel = spec.compile()
 bodies = model.nbody
 print("bodies: ", bodies, "\n joints: ", model.njnt, "\n eq: ", model.neq, "\n num geometries:",
       model.ngeom, "\n meshes: ", model.nmesh)
-# TODO 3: loop over joints; print each name and range
-#   hint: model.joint(i).name, model.jnt_range[i]
+# Joint names and limits (rad). Mirrored joints have negative ranges.
+print("\njoints:")
+for i in range(model.njnt):
+    lo, hi = model.jnt_range[i]
+    print(f"  {i}: {model.joint(i).name:40s} range [{lo:+.3f}, {hi:+.3f}]")
+
 joint_id = model.actuator("driving_actuator").trnid[0]
 print("\n actuators:", model.nu, "\ndriving joint name:", model.joint(joint_id).name)
 
@@ -58,8 +62,14 @@ for i in range(0,bodies):
     total_mass += model.body_mass[i]
 
 print("\ntotal mass is: ", total_mass)
-# TODO 5: if model.neq > 0, print what each equality constraint links
-#   hint: model.eq_obj1id[i], model.eq_obj2id[i] are joint ids -> model.joint(id).name
+# Couplings from URDF <mimic>: follower = c0 + c1 * leader (eq_data[:2]).
+print("\nequalities:")
+for i in range(model.neq):
+    eq_type = mujoco.mjtEq(model.eq_type[i]).name
+    follower = model.joint(model.eq_obj1id[i]).name
+    leader = model.joint(model.eq_obj2id[i]).name
+    c0, c1 = model.eq_data[i][:2]
+    print(f"  {eq_type}: {follower} = {c0:+.3f} {c1:+.3f} * {leader}")
 
 # TODO 6: save with spec.to_file(...)
 spec.to_file(str(OUT))

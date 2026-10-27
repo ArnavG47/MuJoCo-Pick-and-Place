@@ -6,3 +6,5 @@
 
 - fusestatic is a complier setting which merges linkages that dont have joint between them to save computing power.
 - with fusestatic ON, the base link got merged with <worldbody> which has no mass. This removed the base links mass from total mass.
+- when attaching the gripper to the mocap body directly it caused the gripper to have no calculated velocity in the simulation. This meant there was no friction to pick up the block. 
+- the solution was to create a real dynamic body to "weld" to the mocap and it is referred to as 'tool'. This tool is then attached to the EOAT and easily swapped. 

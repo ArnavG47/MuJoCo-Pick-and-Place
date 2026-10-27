@@ -3,14 +3,17 @@ import time
 import mujoco
 import mujoco.viewer
 import numpy as np
+from build_models import build_finger_scene, GRASP_Z
 
 START = np.array([0.0, 0.0, 0.7])
 PREGRASP = np.array([0.0, 0.0, 0.525])   # 100 mm above grasp (Guide 6.4)
-GRASP = np.array([0.0, 0.0, 0.425])      # cube centre
+GRASP = np.array([0.0, 0.0, 0.44])      # cube centre
 LIFTED = np.array([0.0, 0.0, 0.575])     # lift 150 mm
 ABOVE_TARGET = np.array([0.3, 0.0, 0.575])  # translate 300 mm in x
 AT_TARGET = np.array([0.3, 0.0, 0.425])  # back down to target surface
 RETRACTED = np.array([0.3, 0.0, 0.525])  # 100 mm up
+GRASP_OFFSET = np.array([0, 0, GRASP_Z])
+CLOSE, OPEN = 0.8, 0
 
 # (name, duration_s, end_position)
 PHASES = [
@@ -63,10 +66,11 @@ if __name__ == "__main__":
     for t in [0.0, 0.75, 1.5, 2.1, 7.0, 8.0]:
         print(t, phase_at(t))
 
-    model = mujoco.MjModel.from_xml_path("models/table.xml")
+    model: mujoco.MjModel = build_finger_scene().compile()
     data = mujoco.MjData(model)
 
     mid = model.body("carrier").mocapid[0]
+    aid = model.actuator("g_driving_actuator").id
     T_END = SCHEDULE[-1][2] + 1.0   # end of RETRACT + 1 s
     n_steps = int(round(T_END/model.opt.timestep))
 
@@ -78,10 +82,12 @@ if __name__ == "__main__":
             step_start = time.time()
 
             name, pos = phase_at(step_to_time(step, model.opt.timestep))
-            data.mocap_pos[mid] = pos
+            data.mocap_pos[mid] = pos + GRASP_OFFSET
             if name != prev_name:
                 print(f"{step_to_time(step, model.opt.timestep):.5f}s  enter {name}")
                 # later: if name == "ENGAGE": close gripper / turn on suction
+                if name == "ENGAGE": data.ctrl[aid] = CLOSE
+                if name == "RELEASE": data.ctrl[aid] = OPEN
                 prev_name = name
 
             #simulation step is incremented here

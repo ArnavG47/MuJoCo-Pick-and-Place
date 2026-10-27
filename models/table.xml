@@ -17,7 +17,7 @@
     </body>
 
     <body mocap="true" name="carrier" pos="0 0 0.7">
-      <geom name="visual_cube_geom" type="box" size="0.03 0.03 0.06" 
+      <geom name="visual_cube_geom" type="sphere" size="0.005 0 0" 
       rgba="1 0 0 1" contype="0" conaffinity="0"/>
       <site name="flange" pos="0 0 0"/>
     </body>

@@ -36,7 +36,7 @@
     </body>
     <body name="tool" pos="0 0 0.7">
       <joint type="free"/>
-      <frame quat="0 1 0 0">
+      <frame name="rot_frame" quat="0 1 0 0">
         <body name="g_robotiq_85_base_link">
           <inertial pos="0 2.274e-05 0.0323229" quat="0.707251 -0.00059068 0.000590153 0.706962" mass="0.663202" diaginertia="0.000588023 0.000516178 0.000394627"/>
           <geom quat="1 0 0 0" type="mesh" contype="2" mesh="g_robotiq_base"/>

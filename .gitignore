@@ -4,5 +4,6 @@ __pycache__/
 typings/
 LEARNING_CONTEXT.md
 MuJoCo_Trade_Study_Guides.md
-
+models/generated/
 .claude/handoff/
+.obsidian/

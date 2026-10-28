@@ -3,14 +3,17 @@ import mujoco
 SCENE_XML = "models/table.xml"
 GRIPPER_XML = "models/converted/robotiq_2f85.xml"
 OUT = "models/generated/scene_2f85.xml"
+OUT_SUCTION = "models/generated/scene_epick.xml"
 
-PREFIX = "g_"
+
+G_PREFIX = "g_"
+S_PREFIX = "s_"
 FLIP_DOWN = [0, 1, 0, 0]   # quat: 180° about x, fingers point down
 GRASP_Z = 0.125            # m from gripper base to pad centre (estimate, tune in viewer)
 WELD_SOLREF = [0.002, 1]
 TOOL_START = [0, 0, 0.7]
 
-def make_tool_scene() -> tuple[mujoco.MjSpec, mujoco.MjsBody]:
+def make_tool_scene():
     scene = mujoco.MjSpec.from_file(str(SCENE_XML))
 
     #create a normal carrier body which will have a real velocity unlike a mocap
@@ -21,28 +24,77 @@ def make_tool_scene() -> tuple[mujoco.MjSpec, mujoco.MjsBody]:
     scene.add_equality(type=mujoco.mjtEq.mjEQ_WELD, objtype=mujoco.mjtObj.mjOBJ_BODY,
                          name1="carrier", name2="tool",
                           data=[0,0,0, 0,0,0, 1,0,0,0, 1], solref=WELD_SOLREF)
-    return scene, tool
+    
+    frame = tool.add_frame(name="rot_frame", quat=[0, 1, 0, 0])
+    return scene, tool, frame
 
 def build_finger_scene() -> mujoco.MjSpec:
-    scene, tool = make_tool_scene()
+    scene, tool, frame = make_tool_scene()
     gripper = mujoco.MjSpec.from_file(str(GRIPPER_XML))
 
     # TODO 1: add a frame to the tool body, rotated by FLIP_DOWN
-    frame = tool.add_frame(quat=[0, 1, 0, 0])
 
     # TODO 2: attach the gripper spec into that frame with PREFIX
     #   hint: scene.attach(gripper, prefix=..., frame=...)
-    scene.attach(gripper, prefix=PREFIX, frame=frame)
+    scene.attach(gripper, prefix=G_PREFIX, frame=frame)
     # TODO 3: add a site named "grasp" on the gripper base body at [0, 0, GRASP_Z]
     #   hint: scene.body(PREFIX + "robotiq_85_base_link").add_site(name=..., pos=..., size=[0.005, 0, 0], rgba=[0, 0, 1, 1])
-    scene.body(PREFIX + "robotiq_85_base_link").add_site(name="grasp", pos=[0, 0, GRASP_Z],
+    scene.body(G_PREFIX + "robotiq_85_base_link").add_site(name="grasp", pos=[0, 0, GRASP_Z],
                                                          size=[0.005, 0, 0], rgba=[.5, .5, 0, 1])
 
     return scene
 
+EPICK_LEN, EPICK_R = 0.1023, 0.044   # m, from epick_body.xacro
+CUP_H = 0.015                        # m, from epick_single_suction_cup.xacro
+BAR_T, BAR_W = 0.01, 0.02            # m, my choice (no crossbar in the xacro)
+SUCTION_GRASP_Z = EPICK_LEN + BAR_T + CUP_H   # m, flange to cup lip plane
+SUCTION_DEFAULTS = dict(cup_r=0.012, spacing=0.025, f_cup=10.0)
+
+def make_epick_spec(cup_r: float, spacing: float, f_cup: float) -> mujoco.MjSpec:
+    """Dual-cup EPick in tool frame (+z toward object). cup_r, spacing in m; f_cup in N."""
+    spec = mujoco.MjSpec()
+
+    # TODO 1: epick = spec.worldbody.add_body(name="epick")
+    epick = spec.worldbody.add_body(name="epick")
+    epick.add_geom(type=mujoco.mjtGeom.mjGEOM_CYLINDER, 
+                   size=[EPICK_R, EPICK_LEN/2], pos=[0, 0, EPICK_LEN/2])
+    
+    # TODO 2: crossbar = epick.add_body(name="crossbar", pos=[0, 0, EPICK_LEN])
+    crossbar = epick.add_body(name="crossbar", pos=[0, 0, EPICK_LEN])
+    crossbar.add_geom(pos=[0, 0, BAR_T/2], type=mujoco.mjtGeom.mjGEOM_BOX, 
+                      size=[spacing/2 + cup_r, BAR_W/2, BAR_T/2])
+
+    for side, sign in (("left", -1), ("right", +1)):
+        cup = crossbar.add_body(name=f"{side}_cup", pos=[sign*spacing/2, 0, BAR_T])
+        cup.add_geom(type=mujoco.mjtGeom.mjGEOM_CYLINDER, size=[cup_r, CUP_H/2], pos=[0, 0, CUP_H/2])
+        cup.add_site(name=f"{side}_cup_site", pos=[0, 0, CUP_H], rgba=[1, 0, 0, 1])
+        actuator = spec.add_actuator(
+            name=f"{side}_vacuum",
+            trntype=mujoco.mjtTrn.mjTRN_BODY, 
+            target=f"{side}_cup", 
+            ctrlrange=[0, 1]
+            )
+        actuator.set_to_adhesion(f_cup)
+    return spec
+
+def build_suction_scene(**params) -> mujoco.MjSpec:
+    scene, tool, frame = make_tool_scene()
+    suction = make_epick_spec(**params)
+
+    # TODO 2: attach the suction spec into that frame with PREFIX
+    scene.attach(suction, prefix=S_PREFIX, frame=frame)
+    # TODO 3: add a site named "grasp" on the gripper base body at [0, 0, GRASP_Z]
+    scene.body(S_PREFIX + "epick").add_site(name="grasp", pos=[0, 0, SUCTION_GRASP_Z],
+                                                         size=[0.005, 0, 0], rgba=[0, 1, 0, 1])
+    return scene
 
 if __name__ == "__main__":
     spec = build_finger_scene()
     spec.compile()          # fail early if attach broke something
     spec.to_file(OUT)
-    print("saved", OUT)
+    print("gripper saved", OUT)
+
+    spec = build_suction_scene(**SUCTION_DEFAULTS)
+    spec.compile()          # fail early if attach broke something
+    spec.to_file(OUT_SUCTION)
+    print("suction saved", OUT_SUCTION)

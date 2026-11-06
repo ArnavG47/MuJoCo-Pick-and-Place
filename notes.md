@@ -10,3 +10,5 @@
 - the solution was to create a real dynamic body to "weld" to the mocap and it is referred to as 'tool'. This tool is then attached to the EOAT and easily swapped. 
 
 - in trial runner file, a dictionary was created to handle the variations in values for grasp offset, actual grasp location and actuator names. The dictionary is then used throughout the file and in the terminal to choose which simulation to run
+
+- mj_forward computes current state without moving time forward. It's useful for getting positions at the start of a trial run when nothing has been run. 

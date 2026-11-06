@@ -24,5 +24,9 @@ Edits are made in working copies under `assets/grippers/work/`.
 - Package used: `epick_description`
 - Commit: d07391307d2d16cacf88daa168ce02839589397e   Commit date: 2026-09-08   Recorded: 2026-10-23
 - License: BSD 3-Clause, Copyright (c) 2022 PickNik Robotics (`epick_LICENSE`)
-- Working copy: not created yet (Lesson 8)
-- Edits: none yet
+- Working copy: none. The URDF is not loaded; the EPick is rebuilt in code (`make_epick_spec` in `src/build_models.py`).
+- Values taken from the source:
+  - `EPICK_LEN = 0.1023`, `EPICK_R = 0.044` (m): `epick_description/urdf/epick_body.xacro`
+  - `CUP_H = 0.015` (m): `epick_description/urdf/epick_single_suction_cup.xacro`
+- Own choices (not in the source): a crossbar (`BAR_T = 0.01`, `BAR_W = 0.02` m) holding two cups, `cup_r = 0.012` m,
+  `spacing = 0.025` m, adhesion `f_cup = 10` N per cup. Simplified cylinder/box geoms, no meshes.

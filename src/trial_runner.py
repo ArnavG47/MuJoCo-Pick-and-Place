@@ -1,9 +1,12 @@
+import contextlib
 import time
 import mujoco
 import mujoco.viewer
 import numpy as np
+import imageio.v3 as iio
 from numpy.typing import NDArray
-from build_models import build_finger_scene, build_suction_scene, GRASP_Z, SUCTION_GRASP_Z, SUCTION_DEFAULTS
+from build_models import build_finger_scene, build_suction_scene, GRASP_Z, SUCTION_GRASP_Z, SUCTION_DEFAULTS, CLOSED_TIP_Z
+from objects import object_info, cube_info
 import sys
 
 START = np.array([0.0, 0.0, 0.7])
@@ -64,19 +67,34 @@ def classify(lift, max_slip, max_rot, final_pos, target_pos, z0, drop_code):
 
 
 TOOLS = {
-    "finger":  dict(build=lambda: build_finger_scene(),
+    "finger":  dict(build=lambda obj=None: build_finger_scene(obj),
+                    long_axis_x=False,   # objects.object_info: narrow side faces the fingers
                     grasp_z=GRASP_Z,
-                    grasp=np.array([0, 0, 0.44]), # Target pad center location relative to world at the moment of grasping
                     engage={"g_driving_actuator": 0.8}, #actuator name and ctrl value
                     release={"g_driving_actuator": 0.0},
                     drop_code="SLIP_OR_DROP"),
-    "suction": dict(build=lambda: build_suction_scene(**SUCTION_DEFAULTS),# TODO build_suction_scene with SUCTION_DEFAULTS,
+    "suction": dict(build=lambda obj=None: build_suction_scene(obj, **SUCTION_DEFAULTS),
+                    long_axis_x=True,    # long side along the cup spacing
                     grasp_z= SUCTION_GRASP_Z,
-                    grasp=np.array([0, 0, 0.448]), # Target cup lip plane location relative to world at the moment of grasping
-                    engage={"s_left_vacuum": 1, "s_right_vacuum": 1},# TODO both vacuum actuators → 1,
+                    engage={"s_left_vacuum": 1, "s_right_vacuum": 1},
                     release={"s_left_vacuum": 0, "s_right_vacuum": 0},
                     drop_code="CUP_LOSS_OR_DROP")
 }
+
+
+def grasp_point(tool_name: str, info: dict) -> NDArray:
+    """World position (m) of the tool's grasp site at the moment of grasping.
+
+    info["top_z"] is the world z of the object's highest point (cube: 0.45).
+    The object's box centre is at world x = y = 0.
+    Your old values for the cube: finger 0.44, suction 0.448.
+    """
+    # TODO (you): suction -> cup lips just pressed into the top face (adhesion needs contact)
+    if tool_name == "suction": return np.array([0, 0, info["top_z"]-0.002])
+    # TODO (you): finger  -> pads below the top, deep enough to hold tall objects, but not so deep
+    #             the pads hit the table on short ones (info["height"])
+    depth = min(0.035, info["height"] - (CLOSED_TIP_Z - GRASP_Z) - 0.005)    # margin ≈ 0.005
+    return np.array([0, 0, info["top_z"] - depth])   # default for the cube and most objects
 
 
 def build_schedule(phases, start):
@@ -104,16 +122,32 @@ def phase_at(t, schedule):
     return ('DONE', schedule[-1][4])
 
 
-if __name__ == "__main__":
-    tool = TOOLS[sys.argv[1] if len(sys.argv) > 1 else "finger"]
+VIDEO_FPS  = 20
+VIDEO_SIZE = (360, 480)   # (height, width) px; must fit the default 640x480 offscreen buffer
 
-    SCHEDULE = build_schedule(make_phases(tool["grasp"]), START)
-    for t in [0.0, 0.75, 1.5, 2.1, 7.0, 8.0]:
-        print(t, phase_at(t, SCHEDULE))
 
-    model: mujoco.MjModel = tool["build"]().compile()
+def make_camera() -> mujoco.MjvCamera:
+    """Fixed 3/4 view of the pick spot (x=0) and the target (x=0.3)."""
+    cam = mujoco.MjvCamera()
+    cam.lookat[:] = [0.15, 0.0, 0.56]
+    cam.distance, cam.azimuth, cam.elevation = 1.05, 135, -18
+    return cam
+
+
+def run_trial(tool_name: str, obj: str | None = None, show: bool = False,
+              record: str | None = None, verbose: bool = True, hold: bool = True) -> dict | None:
+    """Run one pick-and-place trial. Returns a result row (dict), or None if the viewer was closed mid-trial.
+
+    tool_name: key in TOOLS. obj: key in objects.OBJECTS, or None for the cube.
+    show: open the passive viewer and run in real time. record: path to save a GIF, or None.
+    hold: with show, keep the window open after the trial until you close it (False = close it automatically).
+    """
+    tool = TOOLS[tool_name]
+    info = cube_info() if obj is None else object_info(obj, tool["long_axis_x"])
+    SCHEDULE = build_schedule(make_phases(grasp_point(tool_name, info)), START)
+
+    model: mujoco.MjModel = tool["build"](obj).compile()
     data = mujoco.MjData(model)
-
 
     mid = model.body("carrier").mocapid[0]
     T_END = SCHEDULE[-1][2] + 1.0   # end of RETRACT + 1 s
@@ -121,22 +155,32 @@ if __name__ == "__main__":
 
     prev_name = None
     mujoco.mj_forward(model, data) #needed to evaluate the current position and remove the 0's initialization
-    cube = data.body("cube")
+    cube = data.body(info["body"])     # the object being picked (named cube from Lesson 1)
     grasp_site = data.site("grasp")
     target_pos = data.site("target").xpos.copy()
     rel0 = R0 = z0 = None
     lift, max_slip, max_rot = 0.0, 0.0, 0.0
 
-    with mujoco.viewer.launch_passive(model, data) as viewer:
+    renderer, cam, frames = None, None, []
+    frame_every = int(round(1 / (VIDEO_FPS * model.opt.timestep)))   # steps between video frames
+    if record:
+        renderer = mujoco.Renderer(model, *VIDEO_SIZE)
+        cam = make_camera()
+
+    closed_early = False
+    viewer_ctx = mujoco.viewer.launch_passive(model, data) if show else contextlib.nullcontext()
+    with viewer_ctx as viewer:
         for step in range(0, n_steps):
-            if not viewer.is_running():
+            if show and not viewer.is_running():
+                closed_early = True   # trial didn't finish, so there is no valid result
                 break
             step_start = time.time()
 
             name, pos = phase_at(step_to_time(step, model.opt.timestep), SCHEDULE)
             data.mocap_pos[mid] = pos + np.array([0, 0, tool["grasp_z"]])
             if name != prev_name:
-                print(f"{step_to_time(step, model.opt.timestep):.5f}s  enter {name}")
+                if verbose:
+                    print(f"{step_to_time(step, model.opt.timestep):.5f}s  enter {name}")
                 # reference pose: tool has held the cube for HOLD_CONTACT, cube still on the table
                 if name == "LIFT":
                     rel0 = (cube.xpos - grasp_site.xpos).copy()
@@ -145,7 +189,7 @@ if __name__ == "__main__":
                 if name == "TRANSLATE":
                     lift = cube.xpos[2] - z0
                 # we want to actuators for each EOAT to close once at engage
-                if name == "ENGAGE": 
+                if name == "ENGAGE":
                     for act_name, u in tool["engage"].items(): data.ctrl[model.actuator(act_name).id] = u
                 if name == "RELEASE":
                     for act_name, u in tool["release"].items(): data.ctrl[model.actuator(act_name).id] = u
@@ -160,17 +204,45 @@ if __name__ == "__main__":
                 max_slip = max(max_slip, slip)
                 max_rot = max(max_rot, rotation_angle(R0, cube.xmat.reshape(3, 3)))
 
-            viewer.sync()
-            elapsed = time.time() - step_start
-            remaining = model.opt.timestep - elapsed
-            if remaining > 0:
-                time.sleep(remaining)
+            if renderer is not None and step % frame_every == 0:
+                renderer.update_scene(data, camera=cam)
+                frames.append(renderer.render())
 
-        code, fails = classify(lift, max_slip, max_rot, cube.xpos, target_pos, z0, tool["drop_code"])
-        print("PASS" if code is None else f"FAIL: {code} \nAll fails: {', '.join(fails)}",
-              f"\nlift={lift*1000:.0f}mm slip={max_slip*1000:.1f}mm rot={np.degrees(max_rot):.1f}deg")
+            if show:
+                viewer.sync()
+                remaining = model.opt.timestep - (time.time() - step_start)
+                if remaining > 0:
+                    time.sleep(remaining)
 
-        while viewer.is_running():
+        if not closed_early:
+            code, fails = classify(lift, max_slip, max_rot, cube.xpos, target_pos, z0, tool["drop_code"])
+            if verbose:
+                print("PASS" if code is None else f"FAIL: {code} \nAll fails: {', '.join(fails)}",
+                      f"\nlift={lift*1000:.0f}mm slip={max_slip*1000:.1f}mm rot={np.degrees(max_rot):.1f}deg")
+
+        while show and hold and viewer.is_running():
             viewer.sync()
             time.sleep(0.01)
+
+    if renderer is not None:
+        renderer.close()
+        if not closed_early:
+            iio.imwrite(record, frames, duration=1000 / VIDEO_FPS, loop=0)   # GIF, duration in ms per frame
+    if closed_early:
+        return None
+
+    return dict(tool=tool_name, object=info["key"], passed=code is None,
+                primary=code or "", all_fails=";".join(fails),
+                lift_mm=round(lift * 1000, 1), slip_mm=round(max_slip * 1000, 1),
+                rot_deg=round(float(np.degrees(max_rot)), 1),
+                place_err_mm=round(float(np.linalg.norm(cube.xpos[:2] - target_pos[:2])) * 1000, 1),
+                height_mm=round(info["height"] * 1000), width_x_mm=round(info["width_x"] * 1000),
+                mass_kg=info["mass"])
+
+
+if __name__ == "__main__":
+    # python src/trial_runner.py finger|suction [object_key]   (no object = the cube)
+    tool_name = sys.argv[1] if len(sys.argv) > 1 else "finger"
+    obj = sys.argv[2] if len(sys.argv) > 2 else None
+    run_trial(tool_name, obj, show=True)
 

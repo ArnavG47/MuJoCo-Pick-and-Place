@@ -5,5 +5,7 @@ typings/
 LEARNING_CONTEXT.md
 MuJoCo_Trade_Study_Guides.md
 models/generated/
-.claude/handoff/
+.claude/
 .obsidian/
+results/videos/
+CLAUDE.md.md

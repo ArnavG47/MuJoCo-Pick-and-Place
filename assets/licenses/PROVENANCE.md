@@ -30,3 +30,18 @@ Edits are made in working copies under `assets/grippers/work/`.
   - `CUP_H = 0.015` (m): `epick_description/urdf/epick_single_suction_cup.xacro`
 - Own choices (not in the source): a crossbar (`BAR_T = 0.01`, `BAR_W = 0.02` m) holding two cups, `cup_r = 0.012` m,
   `spacing = 0.025` m, adhesion `f_cup = 10` N per cup. Simplified cylinder/box geoms, no meshes.
+
+## Test objects (Google Scanned Objects, pre-converted to MJCF)
+- Source: https://github.com/kevinzakka/mujoco_scanned_objects (MJCF made with obj2mjcf; collision = 32 V-HACD convex hulls per object)
+- Commit: 6ff8d275cebfd5b47e49685e3cfbe64b20e49a3c   Commit date: 2022-07-07   Recorded: 2026-11-06
+- License: meshes and textures (obj, png) CC-BY 4.0 (Google Scanned Objects, Downs et al. 2022);
+  MJCF (xml) files MIT (`scanned_objects_MJCF_LICENSE`). CC-BY requires attribution: keep this section.
+- Copied unchanged into `assets/objects/scanned/` (8 of 1030 objects, sparse checkout):
+  ACE_Coffee_Mug_Kristen_16_oz_cup, Android_Lego, Beta_Glucan, Canon_Pixma_Ink_Cartridge_8,
+  Great_Dinos_Triceratops_Toy, JarroSil_Activated_Silicon, Jarrow_Formulas_Glucosamine_Hci_Mega_1000_100_ct,
+  Nestle_Nips_Hard_Candy_Peanut_Butter
+- Changes made in code at load time (`src/objects.py`), files on disk untouched:
+  - absolute mesh/texture paths, a freejoint, prefix `obj_`
+  - visual mesh density 0; collision-hull density scaled so the body mass equals a nominal mass
+  - nominal masses (0.05-0.35 kg) are rough estimates of the real products, not measured
+  - yaw 0 or 90 deg and an xy shift so the bounding-box centre sits at world x = y = 0

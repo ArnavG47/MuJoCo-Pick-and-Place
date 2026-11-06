@@ -1,4 +1,5 @@
 import mujoco
+from objects import add_object
 
 SCENE_XML = "models/table.xml"
 GRIPPER_XML = "models/converted/robotiq_2f85.xml"
@@ -9,30 +10,33 @@ OUT_SUCTION = "models/generated/scene_epick.xml"
 G_PREFIX = "g_"
 S_PREFIX = "s_"
 FLIP_DOWN = [0, 1, 0, 0]   # quat: 180° about x, fingers point down
-GRASP_Z = 0.125            # m from gripper base to pad centre (estimate, tune in viewer)
+GRASP_Z = 0.14            # m from gripper base to pad centre (estimate, tune in viewer)
+CLOSED_TIP_Z = 0.1628     # m from gripper base to closed tip 
 WELD_SOLREF = [0.002, 1]
-TOOL_START = [0, 0, 0.7]
+FLANGE_START = [0, 0, 0.7]
 
-def make_tool_scene():
+def make_flange_scene():
     scene = mujoco.MjSpec.from_file(str(SCENE_XML))
 
     #create a normal carrier body which will have a real velocity unlike a mocap
-    tool = scene.worldbody.add_body(name="tool", pos=TOOL_START)
-    tool.add_freejoint()
+    flange = scene.worldbody.add_body(name="flange", pos=FLANGE_START)
+    flange.add_freejoint()
     
-    #weld tool to carrier. The function assumes the mocap name is 'carrier'
+    #weld flange to carrier. The function assumes the mocap name is 'carrier'
     scene.add_equality(type=mujoco.mjtEq.mjEQ_WELD, objtype=mujoco.mjtObj.mjOBJ_BODY,
-                         name1="carrier", name2="tool",
+                         name1="carrier", name2="flange",
                           data=[0,0,0, 0,0,0, 1,0,0,0, 1], solref=WELD_SOLREF)
     
-    frame = tool.add_frame(name="rot_frame", quat=[0, 1, 0, 0])
-    return scene, tool, frame
+    # add a frame to the flange body, rotated by FLIP_DOWN
+    frame = flange.add_frame(name="rot_frame", quat=[0, 1, 0, 0])
+    return scene, flange, frame
 
-def build_finger_scene() -> mujoco.MjSpec:
-    scene, tool, frame = make_tool_scene()
+def build_finger_scene(obj: str | None = None) -> mujoco.MjSpec:
+    """obj: key in objects.OBJECTS, or None for the cube."""
+    scene, flange, frame = make_flange_scene()
+    if obj is not None:
+        add_object(scene, obj, long_axis_x=False)   # narrow side faces the fingers
     gripper = mujoco.MjSpec.from_file(str(GRIPPER_XML))
-
-    # TODO 1: add a frame to the tool body, rotated by FLIP_DOWN
 
     # TODO 2: attach the gripper spec into that frame with PREFIX
     #   hint: scene.attach(gripper, prefix=..., frame=...)
@@ -40,7 +44,9 @@ def build_finger_scene() -> mujoco.MjSpec:
     # TODO 3: add a site named "grasp" on the gripper base body at [0, 0, GRASP_Z]
     #   hint: scene.body(PREFIX + "robotiq_85_base_link").add_site(name=..., pos=..., size=[0.005, 0, 0], rgba=[0, 0, 1, 1])
     scene.body(G_PREFIX + "robotiq_85_base_link").add_site(name="grasp", pos=[0, 0, GRASP_Z],
-                                                         size=[0.005, 0, 0], rgba=[.5, .5, 0, 1])
+                                                         size=[0.005, 0, 0], rgba=[0, 1, 0, 1])
+    scene.body(G_PREFIX + "robotiq_85_base_link").add_site(name="closed_tip", pos=[0, 0, CLOSED_TIP_Z],
+                                                         size=[0.005, 0, 0], rgba=[1, 0, 0, 1])
 
     return scene
 
@@ -77,8 +83,11 @@ def make_epick_spec(cup_r: float, spacing: float, f_cup: float) -> mujoco.MjSpec
         actuator.set_to_adhesion(f_cup)
     return spec
 
-def build_suction_scene(**params) -> mujoco.MjSpec:
-    scene, tool, frame = make_tool_scene()
+def build_suction_scene(obj: str | None = None, **params) -> mujoco.MjSpec:
+    """obj: key in objects.OBJECTS, or None for the cube. params: make_epick_spec args."""
+    scene, flange, frame = make_flange_scene()
+    if obj is not None:
+        add_object(scene, obj, long_axis_x=True)    # long side runs along the cup spacing
     suction = make_epick_spec(**params)
 
     # TODO 2: attach the suction spec into that frame with PREFIX

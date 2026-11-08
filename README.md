@@ -31,7 +31,10 @@ Neither tool could handle the mug. Suction lost its grip in every trial, and the
 ### Limits
 - 20 trials per object and tool, on 9 objects. That is enough to show the big differences above, but not to separate tool performance on objects that are close, like on the bottles.
 - Each tool gets the object turned to suit it. For example, the lego figure is 21 mm wide between the fingers but 95 mm long under the suction cups. The random changes are added on top of that starting pose. A setup where objects arrive turned the wrong way for one tool would be a different test. The turned lego figure is demonstrated in the videos below.
-![[finger_lego_figure.gif|338]]![[suction_lego_figure.gif|337]]
+  <p align="center">
+    <img src="results/videos/finger_lego_figure.gif" width="340" alt="Finger gripper picking the Lego figure">
+    <img src="results/videos/suction_lego_figure.gif" width="340" alt="Suction gripper failing to release the Lego figure">
+  </p>
 - All objects here are rigid, and the path is fixed with no robot arm, so arm error isn't included.
 - Suction is modelled as two cups that each pull with a set force (10 N) while they touch the object. It does not model air leaking or the cup sealing.
 - The placement check measures distance from the target, so a start offset of up to 3 mm counts against the 10 mm tolerance. I checked that this didn't change any result: suction's placement failures were all 12 mm or more off target, and the fingers' mug placement failures were within 8 mm, so the fingers failed on height instead.

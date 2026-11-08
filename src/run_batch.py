@@ -4,6 +4,10 @@ python src/run_batch.py                 # all objects, both tools -> results/smo
 python src/run_batch.py --record        # also save a GIF per trial in results/videos/
 python src/run_batch.py --show          # watch each trial in the viewer (real time, ~9 s per trial)
 python src/run_batch.py --objects cube ink_box --tools suction
+python src/run_batch.py --n 20 --seed 0 --out results/robust.csv   # 20 random reps each
+
+Rep number r uses seed + r for BOTH tools, so both tools get the same random changes.
+Without --seed there is no randomisation (the smoke test).
 
 With --show, each trial opens its own window and closes it when done. Closing a window
 yourself mid-trial stops the batch; the trials finished so far are still saved.
@@ -27,6 +31,8 @@ def main():
     ap.add_argument("--tools", nargs="+", default=list(TOOLS))
     ap.add_argument("--record", action="store_true", help="save a GIF per trial")
     ap.add_argument("--show", action="store_true", help="watch each trial in the viewer (real time)")
+    ap.add_argument("--n", type=int, default=1, help="number of reps for each object and tool")
+    ap.add_argument("--seed", type=int, default=None, help="first seed; leave out for no randomisation")
     ap.add_argument("--out", default=OUT_CSV)
     args = ap.parse_args()
 
@@ -34,19 +40,36 @@ def main():
     if args.record:
         os.makedirs(VIDEO_DIR, exist_ok=True)
 
-    trials = [(obj, tool) for obj in args.objects for tool in args.tools]
+    # order: object, then rep, then tool -> both tools run one after the other with the same seed
+    trials = []
+    for obj in args.objects:
+        for rep in range(args.n):
+            for tool in args.tools:
+                trials.append((obj, rep, tool))
+
     rows = []
-    for obj, tool in trials:
-        video = os.path.join(VIDEO_DIR, f"{tool}_{obj}.gif") if args.record else None
+    for obj, rep, tool in trials:
+        if args.seed is None:
+            seed = None            # no randomisation
+        else:
+            seed = args.seed + rep
+
+        video = None
+        if args.record:
+            if seed is not None:                 # randomised: one GIF per trial, named by its real seed
+                video = os.path.join(VIDEO_DIR, f"{tool}_{obj}_seed{seed}.gif")
+            elif rep == 0:                       # smoke test: one GIF per object and tool
+                video = os.path.join(VIDEO_DIR, f"{tool}_{obj}.gif")
+
         t0 = time.time()
         row = run_trial(tool, None if obj == "cube" else obj, show=args.show, hold=False,
-                        record=video, verbose=False)
+                        record=video, verbose=False, seed=seed)
         if row is None:   # viewer window closed mid-trial
             print(f"{obj:12s} {tool:8s} viewer closed - stopping batch")
             break
         rows.append(row)
         status = "PASS" if row["passed"] else f"FAIL {row['all_fails']}"
-        print(f"{obj:12s} {tool:8s} {status:40s} lift={row['lift_mm']:6.1f}mm "
+        print(f"{obj:12s} {tool:8s} seed={seed}  {status:40s} lift={row['lift_mm']:6.1f}mm "
               f"slip={row['slip_mm']:5.1f}mm rot={row['rot_deg']:5.1f}deg  ({time.time() - t0:.1f}s)")
 
     if not rows:
@@ -55,7 +78,8 @@ def main():
     df = pd.DataFrame(rows)
     df.to_csv(args.out, index=False)
     print(f"\nsaved {len(df)} trials -> {args.out}")
-    print(df.pivot(index="object", columns="tool", values="passed").to_string())
+    # pass rate for each object and tool (mean of True/False = fraction passed)
+    print(df.groupby(["object", "tool"])["passed"].mean().round(2).to_string())
     print("pass rate:", df.groupby("tool")["passed"].mean().round(2).to_dict())
 
 

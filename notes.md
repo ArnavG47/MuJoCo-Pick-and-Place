@@ -12,3 +12,7 @@
 - in trial runner file, a dictionary was created to handle the variations in values for grasp offset, actual grasp location and actuator names. The dictionary is then used throughout the file and in the terminal to choose which simulation to run
 
 - mj_forward computes current state without moving time forward. It's useful for getting positions at the start of a trial run when nothing has been run. 
+- the grasp_point function determines how far down the end effector should go based on the height of the object. For the fingers it will go down a depth of 35mm unless the object is short and that depth would cause contact with the table. In that case the grasp point will be above the top of the object. 
+- friction in the finger end effectors was changed by altering the shape the friction acts upon. The default is a cone 
+- mass and friction of scene live in mjModel and positions live in mjData
+- seed is incremented each rep in run_batch

@@ -3,6 +3,7 @@ import time
 import mujoco
 import mujoco.viewer
 import numpy as np
+import math
 import imageio.v3 as iio
 from numpy.typing import NDArray
 from build_models import build_finger_scene, build_suction_scene, GRASP_Z, SUCTION_GRASP_Z, SUCTION_DEFAULTS, CLOSED_TIP_Z
@@ -81,6 +82,49 @@ TOOLS = {
                     drop_code="CUP_LOSS_OR_DROP")
 }
 
+# --- Randomisation (NEXT_STEPS item 1) ---
+PERTURB = dict(
+    xy = 0.003,           # m, max offset in x and in y (uniform ±). Plan: 3 mm
+    yaw= 25*math.pi/180,      # rad, max extra turn about z (uniform ±). Plan: 10 deg
+    mass=(0.8, 1.2),  # multiplier range (low, high). Plan: 0.8–1.2
+    fric=(0.5, 1.0),  # multiplier range. Plan: 0.7–1.0
+)
+
+def perturb(model: mujoco.MjModel, data: mujoco.MjData, info: dict,
+            rng: np.random.Generator) -> dict:
+    """Randomise one trial in place. Call after MjData(), before mj_forward().
+    Returns the values used, so they can go in the CSV."""
+    bid = model.body(info["body"]).id
+
+    # TODO 1: start index of the object's freejoint in data.qpos
+    qadr = model.jnt_qposadr[model.body_jntadr[bid]]  # index of the first of 7 qpos values for the freejoint
+
+    # TODO 2: draw dx, dy, dyaw with rng.uniform(low, high)
+    dx = rng.uniform(-PERTURB["xy"], PERTURB["xy"]) 
+    dy = rng.uniform(-PERTURB["xy"], PERTURB["xy"])
+    dyaw = rng.uniform(-PERTURB["yaw"], PERTURB["yaw"])
+
+    # TODO 3: shift x and y (z stays: the object must still sit on the table)
+    data.qpos[qadr + 0] += dx
+    data.qpos[qadr + 1] += dy
+    # TODO 4: turn about world z
+    #   - build q_yaw as a numpy array of 4
+    #   - copy the old quat out first (np.array(...) or .copy())
+    qyaw = np.array([np.cos(dyaw/2), 0, 0, np.sin(dyaw/2)])   # (w, x, y, z)
+    qold = data.qpos[qadr+3:qadr+7].copy()   # (w, x, y, z)
+    #   - mujoco.mju_mulQuat(<where to write>, q_yaw, old)
+    mujoco.mju_mulQuat(data.qpos[qadr+3:qadr+7], qyaw, qold)
+
+    # TODO 5: draw k_mass; scale model.body_mass[bid] and model.body_inertia[bid]
+    k_mass = rng.uniform(PERTURB["mass"][0], PERTURB["mass"][1])
+    model.body_mass[bid] *= k_mass
+    model.body_inertia[bid] *= k_mass
+
+    # TODO 6: draw k_fric; scale the SLIDING friction (column 0) of EVERY geom
+    k_fric = rng.uniform(PERTURB["fric"][0], PERTURB["fric"][1])
+    model.geom_friction[:, 0] *= k_fric
+
+    return dict(dx=dx, dy=dy, dyaw=dyaw, k_mass=k_mass, k_fric=k_fric)
 
 def grasp_point(tool_name: str, info: dict) -> NDArray:
     """World position (m) of the tool's grasp site at the moment of grasping.
@@ -135,7 +179,7 @@ def make_camera() -> mujoco.MjvCamera:
 
 
 def run_trial(tool_name: str, obj: str | None = None, show: bool = False,
-              record: str | None = None, verbose: bool = True, hold: bool = True) -> dict | None:
+              record: str | None = None, verbose: bool = True, hold: bool = True, seed: int | None = None) -> dict | None:
     """Run one pick-and-place trial. Returns a result row (dict), or None if the viewer was closed mid-trial.
 
     tool_name: key in TOOLS. obj: key in objects.OBJECTS, or None for the cube.
@@ -146,8 +190,12 @@ def run_trial(tool_name: str, obj: str | None = None, show: bool = False,
     info = cube_info() if obj is None else object_info(obj, tool["long_axis_x"])
     SCHEDULE = build_schedule(make_phases(grasp_point(tool_name, info)), START)
 
+
     model: mujoco.MjModel = tool["build"](obj).compile()
     data = mujoco.MjData(model)
+    if seed is not None: 
+        rng = np.random.default_rng(seed)
+        pert_vals = perturb(model, data, info, rng)
 
     mid = model.body("carrier").mocapid[0]
     T_END = SCHEDULE[-1][2] + 1.0   # end of RETRACT + 1 s
@@ -231,13 +279,21 @@ def run_trial(tool_name: str, obj: str | None = None, show: bool = False,
     if closed_early:
         return None
 
-    return dict(tool=tool_name, object=info["key"], passed=code is None,
+    row = dict(tool=tool_name, object=info["key"], passed=code is None,
                 primary=code or "", all_fails=";".join(fails),
                 lift_mm=round(lift * 1000, 1), slip_mm=round(max_slip * 1000, 1),
                 rot_deg=round(float(np.degrees(max_rot)), 1),
                 place_err_mm=round(float(np.linalg.norm(cube.xpos[:2] - target_pos[:2])) * 1000, 1),
                 height_mm=round(info["height"] * 1000), width_x_mm=round(info["width_x"] * 1000),
                 mass_kg=info["mass"])
+    if seed is not None:
+        row.update(seed=seed, 
+                   dx_mm = round(pert_vals["dx"]*1000, 2), 
+                   dy_mm = round(pert_vals["dy"]*1000, 2), 
+                   dyaw_deg = np.degrees(pert_vals["dyaw"]),
+                   k_mass = pert_vals["k_mass"], 
+                   k_fric = pert_vals["k_fric"])
+    return row
 
 
 if __name__ == "__main__":
